@@ -1,4 +1,4 @@
-import { useState , useEffect } from "react";
+import { useState, useEffect } from "react";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { getBase64 } from "../helpers/imageHelper";
 import UploadSection from "./Uploader/Uploader";
@@ -8,6 +8,7 @@ import ScaleLoader from "react-spinners/ScaleLoader";
 
 const SpeciesInfo = () => {
   const genAI = new GoogleGenerativeAI(import.meta.env.VITE_API_KEY);
+  console.log("API Key:", import.meta.env.VITE_API_KEY); // Debugging API Key
   const navigate = useNavigate();
 
   const [image, setImage] = useState("");
@@ -22,7 +23,6 @@ const SpeciesInfo = () => {
 
     return () => clearTimeout(timeout);
   }, []);
-
 
   const handleImageChange = (e) => {
     const file = e.target.files[0];
@@ -50,35 +50,48 @@ const SpeciesInfo = () => {
   }
 
   async function run() {
-    const model = genAI.getGenerativeModel({ model: "gemini-pro-vision" });
-    const result = await model.generateContent([prompt, imageInlineData]);
-    const response = await result.response;
-    const text = await response.text();
-
     try {
-      // Attempt to parse JSON directly
-      const jsonData = JSON.parse(text);
-      console.log(jsonData);
-      return jsonData;
-    } catch (error) {
-      if (error instanceof SyntaxError) {
-        // Handle the case where JSON is enclosed in ```json {response} ``` (rare case)
+      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" }); // Using the latest available model
+      const result = await model.generateContent([prompt, imageInlineData]);
+      const response = await result.response;
+      const text = await response.text();
+
+      console.log("AI Raw Response:", text); // Debugging
+
+      try {
+        const jsonData = JSON.parse(text);
+        console.log("Parsed AI Response:", jsonData);
+        return jsonData;
+      } catch (error) {
+        console.warn("JSON Parsing Failed, Attempting Cleanup...");
         const startIndex = text.indexOf("{");
         const endIndex = text.lastIndexOf("}");
-        const jsonData = JSON.parse(text.substring(startIndex, endIndex + 1));
-        return jsonData;
-      } else {
-        // Handle other types of errors
-        console.error("Error parsing JSON:", error);
+        
+        if (startIndex !== -1 && endIndex !== -1) {
+          try {
+            const jsonData = JSON.parse(text.substring(startIndex, endIndex + 1));
+            return jsonData;
+          } catch (nestedError) {
+            console.error("Failed to parse cleaned JSON:", nestedError);
+          }
+        }
       }
+    } catch (error) {
+      console.error("Error in AI response:", error);
     }
+    return null; // Return null if AI response fails
   }
 
   const handleClick = async () => {
-    setLoading(true); // Set loading to true when the search button is clicked
-    const aiResponse = await run(); // Call run and await response
-    setLoading(false); // Set loading to false once the AI response has been received
-    navigate("/results", { state: { aiResponse, image } }); // Navigate with response
+    setLoading(true); // Show loader
+    const aiResponse = await run(); // Get AI response
+    setLoading(false); // Hide loader
+
+    if (aiResponse) {
+      navigate("/results", { state: { aiResponse, image } });
+    } else {
+      console.error("AI Response is null, cannot navigate.");
+    }
   };
 
   if (loading) {
@@ -99,16 +112,13 @@ const SpeciesInfo = () => {
         handleClick={handleClick}
         image={image}
       />
-      {/* {image && (
-        <img src={image} className="mt-4 mx-auto min-w-300 min-h-400" />
-      )} */}
       <div className="flex justify-center items-center">
-      <button
-        onClick={handleClick}
-        className="search-button bg-cyan-500 hover:bg-cyan-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
-      >
-        Search
-      </button>
+        <button
+          onClick={handleClick}
+          className="search-button bg-cyan-500 hover:bg-cyan-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
+        >
+          Search
+        </button>
       </div>
     </div>
   );
